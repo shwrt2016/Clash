@@ -1,0 +1,139 @@
+Clash Claude SG — 安装环境与脚本用法
+====================================
+
+只说明：在什么机器上能跑、要先装什么、怎么执行。
+全部操作都通过 install-mac-optimized.sh 完成，增强脚本模板已内嵌在里面。
+
+
+1. 适用环境
+-----------
+必须同时满足：
+
+- 操作系统：macOS（脚本会检查 uname，其它系统直接退出）
+- 已安装 Clash Verge Rev（或旧版 Clash Verge）
+- 终端能执行 bash（macOS 自带即可）
+
+不支持 Windows / Linux。
+
+
+2. 不需要额外装的东西
+---------------------
+脚本不依赖 Homebrew、Node、Python、Git。
+
+macOS 自带即可：
+  bash  awk  sed  grep  od  mktemp  install  pgrep  chmod  cp  curl
+
+Node 是可选项：本机有 node 时，写入前会多做一次语法检查；没有就跳过。
+curl 只在执行 --verify 时用到。
+
+
+3. 你必须事先准备
+-----------------
+A. Clash Verge 至少完整启动过一次
+   配置目录会出现在下面之一（脚本自动探测）：
+     ~/Library/Application Support/io.github.clash-verge-rev.clash-verge-rev
+     ~/Library/Application Support/io.github.clash-verge.clash-verge
+   只装了 App、从未打开过 → 没有这个目录，脚本会失败。
+
+B. 已经导入至少一份订阅
+   目录里要有 profiles.yaml 和 profiles/。
+
+C. 已经创建过「全局扩展脚本」
+   脚本要在 profiles.yaml 里找到 uid: Script。
+   全新安装如果从没点开过全局脚本，这一项会失败。
+   操作：打开 Clash Verge → 配置 / 设置里找到全局扩展脚本（Script）并保存一次。
+
+D. 手头有 SG HTTP 代理账号
+   仓库里没有真实密码。安装时终端会询问：
+     SG_SERVER    服务器域名或 IP（不能有空格）
+     SG_PORT      端口，1～65535
+     SG_USERNAME  用户名
+     SG_PASSWORD  密码（输入时不显示）
+     是否跳过 TLS 证书校验（默认 N）
+
+E. 跑脚本时 Clash Verge 必须完全退出
+   包括菜单栏图标。程序还在运行会拒绝写入，避免配置被覆盖。
+
+
+4. 拿到脚本
+-----------
+任选一种：
+
+  git clone https://github.com/shwrt2016/Clash.git
+  或从 GitHub 下载 ZIP 后解压
+
+不需要把仓库放进特定路径。下面用目录名 Clash 举例。
+
+
+5. 安装
+-------
+1) 按第 3 节做完 A～C，然后完全退出 Clash Verge。
+
+2) 终端：
+
+   cd /path/to/Clash
+   chmod +x install-mac-optimized.sh
+   ./install-mac-optimized.sh
+
+3) 按提示输入 SG 账号。成功时会打印「安装完成」，并写出备份目录。
+
+非交互（CI / 已导出环境变量时）：
+
+   SG_SERVER=... \
+   SG_PORT=443 \
+   SG_USERNAME=... \
+   SG_PASSWORD=... \
+   SG_SKIP_CERT_VERIFY=false \
+   ./install-mac-optimized.sh --non-interactive
+
+常用参数：
+  --force-profile-script  当前订阅已有非空后置脚本时，备份后强制替换
+  --skip-running-check    跳过「Clash 是否在运行」检查（一般不要用）
+  --verify                只验证，不安装
+  -h                      帮助
+
+
+6. 安装完成后（脚本不会替你点 GUI）
+-----------------------------------
+重新打开 Clash Verge，然后：
+
+- 模式：Rule
+- 打开 TUN
+- 对当前订阅点一次「重新加载」或切换订阅再切回
+- 系统网络里关闭 IPv6（只开 TUN 时 IPv6 可能绕过代理）
+    系统设置 → 网络 → 当前网络 → TCP/IP → IPv6 = 关闭
+    或：sudo networksetup -setv6off "Wi-Fi"
+
+GUI 的「DNS 覆盖」应保持关闭。DNS 由增强脚本接管。
+
+
+7. 验证
+-------
+Clash 已运行、订阅已重新加载后：
+
+   ./install-mac-optimized.sh --verify
+
+浏览器也可打开：https://ip.net.coffee/claude/
+看 Claude 出口是否为新加坡。
+
+--verify 需要运行配置文件 clash-verge.yaml 已生成；
+若从未成功加载过订阅，验证会失败。
+
+
+8. 常见失败
+-----------
+错误提示                                         原因
+未找到 Clash Verge 配置目录                      没装、或从未启动过 App
+配置不完整，缺少 profiles.yaml                   启动过但还没导入订阅
+未找到全局脚本项 uid=Script                      从未创建全局扩展脚本
+Clash Verge 正在运行                             没彻底退出
+SG_SERVER / 端口 / 用户名密码相关错误            没填、填空、端口不是数字
+检测到当前订阅存在非空后置脚本                   订阅自带 script；确认后加 --force-profile-script
+此脚本仅适用于 macOS                             在非 Mac 上执行
+
+
+9. 仓库里其它文件
+-----------------
+install-mac-optimized.sh   唯一入口（安装 + 验证），增强脚本模板内嵌其中
+test-optimized.mjs         开发用测试，使用本仓库不需要跑
+LICENSE                    木兰协议
