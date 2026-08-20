@@ -1,0 +1,86 @@
+Clash Claude → 新加坡 配置包（给另一台电脑）
+================================================
+
+目录文件
+--------
+Script.js          全局增强脚本（核心，会清理脏配置）
+dns_config.yaml    旧版 Verge DNS 覆盖参考
+install-mac-optimized.sh  推荐安装脚本（安全备份、安装、验证）
+install-mac.sh     旧版安装脚本
+verify.sh          旧版安装后自检
+
+
+代理账号
+--------
+不要把真实服务器、用户名、密码写进仓库里的 Script.js。
+推荐用 install-mac-optimized.sh，安装时会提示输入 SG 代理信息
+（也可用环境变量 SG_SERVER / SG_PORT / SG_USERNAME / SG_PASSWORD）。
+旧版 install-mac.sh 会直接复制 Script.js，仅适合你已自行填好占位符之后使用。
+
+
+另一台电脑怎么装
+----------------
+1. 把整个文件夹拷过去（U 盘 / 隔空投送均可）
+2. 先打开一次 Clash Verge，再关也可以
+3. 终端执行：
+
+   cd ~/Desktop/clash-claude-sg-setup
+   chmod +x install-mac-optimized.sh
+   ./install-mac-optimized.sh
+
+4. 打开 Clash Verge：
+   - 开启全局扩展脚本（Script）
+   - 对当前订阅点「重新加载」或切换一次订阅
+   - 模式：rule
+   - 开启 TUN
+   - 节点选择继续用「自动选择」即可（不必全局走 SG-Team）
+
+5. 验证：
+
+   ./install-mac-optimized.sh --verify
+   浏览器打开 https://ip.net.coffee/claude/
+   看 Claude 出口是否新加坡
+
+
+脚本会清理哪些脏配置
+--------------------
+- 删除写死的 Claude/Anthropic hosts（否则 DNS 不生效、容易漏到美国）
+- 删除旧的 Claude/SG-Team/冲突规则后重建
+- 置顶直连 qlogo.cn、qpic.cn、gtimg.cn，避免微信图片被订阅误拦截
+- 置顶直连 ip138.com、ip.cn，避免中国出口检测域名落到海外 CDN
+- Claude 规则之后置顶 GEOSITE/CN 与 GEOIP/CN，国内网站绕过广告拦截
+- 国内域名使用 223.5.5.5 / 1.12.12.12 的加密 DoH，并通过 DIRECT 直连
+- 国外域名使用 Cloudflare DoH，并按 Clash 规则转发
+- Claude 相关域名使用 Cloudflare DoH，并强制通过 SG-Team
+- 启动 DNS 使用基于 IP 的 Cloudflare DoH，避免明文解析
+- 开启 GEO 数据自动更新，更新间隔为 72 小时
+- 关闭配置内 ipv6
+- 拒绝 Claude 的 UDP/QUIC（SG-Team 是 HTTP，不支持 UDP）
+
+
+预期效果
+--------
+- Claude / Anthropic / 登录 / 监控相关 → SG-Team（新加坡）
+- 微信头像、表情及腾讯图片资源 → DIRECT
+- 中国出口检测域名 → DIRECT
+- 国内网站及中国 IP → DIRECT，国内广告和追踪请求不再统一拦截
+- 其它网站 → 订阅自动选择
+- 中国域名 DNS → 223.5.5.5 / 1.12.12.12 DoH，经 DIRECT
+- 国外域名 DNS → 1.1.1.1，经 Clash 规则
+- Claude DNS → 1.1.1.1，经 SG-Team
+- 启动 DNS → Cloudflare DoH，无明文 DNS
+- GEO 数据 → 每 72 小时自动更新
+
+
+若全局脚本不生效
+----------------
+把 Script.js 全文粘贴到：
+  当前订阅 → 编辑 → 脚本 / script
+保存后再加载。
+
+
+建议（另一台若只开 TUN 会 IPv6 泄露）
+------------------------------------
+系统设置 → 网络 → 当前网络 → TCP/IP → 配置 IPv6 = 关闭
+或：
+  sudo networksetup -setv6off "Wi-Fi"
