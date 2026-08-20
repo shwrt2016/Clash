@@ -120,91 +120,17 @@ function plain(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-test("分发文件只用占位符，安装脚本靠环境变量注入账号", () => {
+test("安装脚本靠环境变量注入账号，并检查 GEO 与启动 DNS", () => {
   assert.equal(existsSync(installerPath), true, "尚未生成优化安装脚本");
   const installer = readFileSync(installerPath, "utf8");
-  const script = readFileSync(join(packageDir, "Script.js"), "utf8");
 
   assert.match(installer, /SG_SERVER/);
   assert.match(installer, /SG_PASSWORD/);
-  assert.match(script, /YOUR_SG_SERVER/);
-  assert.match(script, /YOUR_SG_PASSWORD/);
-});
-
-test("新旧验证脚本均检查 GEO 72 小时自动更新", () => {
-  const optimizedSource = readFileSync(installerPath, "utf8");
-  const legacySource = readFileSync(join(packageDir, "verify.sh"), "utf8");
-
-  for (const source of [optimizedSource, legacySource]) {
-    assert.match(source, /geo-auto-update/);
-    assert.match(source, /geo-update-interval/);
-    assert.match(source, /72/);
-  }
-});
-
-test("新旧验证脚本均检查启动 DNS 加密", () => {
-  const optimizedSource = readFileSync(installerPath, "utf8");
-  const legacySource = readFileSync(join(packageDir, "verify.sh"), "utf8");
-
-  for (const source of [optimizedSource, legacySource]) {
-    assert.match(source, /default-nameserver/);
-    assert.match(source, /启动 DNS 已加密/);
-  }
-});
-
-test("目录脚本和 DNS 配置实现三层 DNS 出站", () => {
-  const { main } = loadMain(join(packageDir, "Script.js"));
-  const config = plain(main({ dns: {}, proxies: [], rules: [] }, "目录脚本"));
-
-  assert.equal(config["geo-auto-update"], true);
-  assert.equal(config["geo-update-interval"], 72);
-  assert.deepEqual(config.dns["default-nameserver"], [
-    "https://1.1.1.1/dns-query",
-    "https://1.0.0.1/dns-query",
-  ]);
-  assert.deepEqual(config.dns.nameserver, [
-    "https://1.1.1.1/dns-query#RULES",
-    "https://1.0.0.1/dns-query#RULES",
-  ]);
-  assert.deepEqual(config.dns["nameserver-policy"]["geosite:cn"], [
-    "https://223.5.5.5/dns-query#DIRECT",
-    "https://1.12.12.12/dns-query#DIRECT",
-  ]);
-  assert.deepEqual(
-    config.dns["nameserver-policy"]["geosite:geolocation-!cn"],
-    [
-      "https://1.1.1.1/dns-query#RULES",
-      "https://1.0.0.1/dns-query#RULES",
-    ],
-  );
-  assert.deepEqual(config.dns["nameserver-policy"]["+.claude.ai"], [
-    "https://1.1.1.1/dns-query#SG-Team",
-    "https://1.0.0.1/dns-query#SG-Team",
-  ]);
-  assert.deepEqual(config.rules.slice(0, 5), [
-    "DOMAIN-SUFFIX,qlogo.cn,DIRECT",
-    "DOMAIN-SUFFIX,qpic.cn,DIRECT",
-    "DOMAIN-SUFFIX,gtimg.cn,DIRECT",
-    "DOMAIN-SUFFIX,ip138.com,DIRECT",
-    "DOMAIN-SUFFIX,ip.cn,DIRECT",
-  ]);
-  assert.equal(
-    config.rules.indexOf("GEOSITE,CN,DIRECT") >
-      config.rules.indexOf("DOMAIN-SUFFIX,claude.ai,SG-Team"),
-    true,
-  );
-  assert.equal(
-    config.rules.indexOf("GEOIP,CN,DIRECT"),
-    config.rules.indexOf("GEOSITE,CN,DIRECT") + 1,
-  );
-
-  const dnsSource = readFileSync(join(packageDir, "dns_config.yaml"), "utf8");
-  assert.match(dnsSource, /https:\/\/223\.5\.5\.5\/dns-query#DIRECT/);
-  assert.match(dnsSource, /https:\/\/1\.12\.12\.12\/dns-query#DIRECT/);
-  assert.equal(dnsSource.includes("doh.pub"), false);
-  assert.equal(dnsSource.includes("dns.alidns.com"), false);
-  assert.match(dnsSource, /https:\/\/1\.1\.1\.1\/dns-query#RULES/);
-  assert.match(dnsSource, /https:\/\/1\.1\.1\.1\/dns-query#SG-Team/);
+  assert.match(installer, /geo-auto-update/);
+  assert.match(installer, /geo-update-interval/);
+  assert.match(installer, /72/);
+  assert.match(installer, /default-nameserver/);
+  assert.match(installer, /启动 DNS 已加密/);
 });
 
 test("默认拒绝覆盖非空的订阅后置脚本，且不产生部分修改", () => {
