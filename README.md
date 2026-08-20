@@ -1,64 +1,50 @@
-# Clash Claude SG
+# 让 Claude 走新加坡
 
-给 **macOS + Clash Verge Rev** 用的安装脚本：把 Claude / Anthropic 相关流量走你自己的新加坡 HTTP 代理（`SG-Team`），其它流量仍跟订阅原策略走。
+这是给 **苹果电脑（Mac）** 用的小工具。
 
-这不是 Clash 客户端，也不提供代理账号。你需要已经装好 Clash Verge，并自备 SG 代理。
+装好之后：打开 Claude 会走你自己的新加坡代理；刷网页、看视频还是跟平时 Clash 一样。
 
-完整环境要求和失败对照见 [`使用说明.txt`](./使用说明.txt)。
+注意：
 
-## 环境
+- 这不是 Clash 软件本身，你要先自己装好 **Clash Verge**
+- 这里也不送代理账号。服务器地址、端口、用户名、密码，要问卖你代理的人要
 
-| 需要 | 不需要 |
+**不会编程也没关系。** 请打开 [`小白使用说明.txt`](./小白使用说明.txt)，从下载到检查，一步步照着做。
+
+## 你需要准备什么
+
+三样都要有，缺一样先别装：
+
+1. 一台 Mac（Windows 电脑用不了）
+2. 已经装好 Clash Verge，并且导入过订阅、能正常上网
+3. 新加坡代理的四条信息：服务器、端口、用户名、密码
+
+不用额外装别的软件。
+
+## 怎么用（简要）
+
+详细截图式步骤见 [`小白使用说明.txt`](./小白使用说明.txt)。大概是：
+
+1. 打开 Clash Verge，确认订阅能用，然后 **彻底退出**（点屏幕右上角小图标里的「退出」，不是只关窗口）
+2. 从本页下载 ZIP，解压
+3. 打开「终端」，进入解压出来的文件夹，运行安装命令
+4. 按提示输入代理账号（输密码时屏幕上什么都不显示，是正常的）
+5. 再打开 Clash Verge：模式选「规则」，打开 TUN，对当前订阅点一次重新加载
+6. 再跑一次检查命令，看到「验证通过」就成功了
+
+安装时如果检查没通过，会自动把你原来的设置还原，一般不会把电脑搞坏。
+
+## 这些文件是干什么的
+
+| 文件 | 干什么 |
 | --- | --- |
-| macOS | Windows / Linux |
-| Clash Verge Rev（或旧版 Clash Verge） | Homebrew / Node / Python |
-| 已启动过一次 App、已导入订阅、已创建全局扩展脚本 | 把密码写进仓库 |
-| 自备 SG HTTP 代理账号 | |
+| [`小白使用说明.txt`](./小白使用说明.txt) | **请先看这个**，零基础一步步教你装 |
+| `install-mac-optimized.sh` | 真正干活的安装程序 |
+| `self-check.sh` | 装完后检查有没有成功 |
+| [`使用说明.txt`](./使用说明.txt) | 给想看细节的人：出错提示对照、环境要求 |
 
-系统自带 `bash` 即可。有 Node 时安装前会多做一次语法检查；没有也能装。
+密码只会写在你自己电脑上，不会上传。
 
-## 快速安装
-
-1. 打开一次 Clash Verge：导入订阅，并创建/保存一次「全局扩展脚本」，然后 **完全退出**（含菜单栏图标）。
-2. 获取本仓库后执行：
-
-```bash
-chmod +x install-mac-optimized.sh self-check.sh
-./install-mac-optimized.sh
-```
-
-3. 按提示输入 `SG_SERVER` / `SG_PORT` / `SG_USERNAME` / `SG_PASSWORD`。安装结束会自动检查写入内容和权限；失败时自动恢复安装前配置。
-4. 再打开 Clash Verge：Rule 模式、打开 TUN、对当前订阅重新加载。系统网络建议关闭 IPv6。
-
-非交互：
-
-```bash
-SG_SERVER=... \
-SG_PORT=443 \
-SG_USERNAME=... \
-SG_PASSWORD=... \
-./install-mac-optimized.sh --non-interactive
-```
-
-验证：
-
-```bash
-./self-check.sh
-```
-
-兼容命令 `./install-mac-optimized.sh --verify` 会调用同一个自检脚本。
-
-## 仓库里有什么
-
-| 文件 | 作用 |
-| --- | --- |
-| `install-mac-optimized.sh` | 安装入口，写入后自动自检，失败自动回滚 |
-| `self-check.sh` | 安装文件自检 + Clash 重载后的配置和出口自检 |
-| `使用说明.txt` | 环境、依赖、步骤和常见失败 |
-| `test-optimized.mjs` | 开发用测试，使用本仓库不需要跑 |
-
-安装脚本会把生成的增强脚本写入 Clash Verge 配置目录，并在同目录做私密备份。仓库内不含真实代理密码。
-
-## License
+## 许可
 
 [木兰宽松许可证，第2版](./LICENSE)

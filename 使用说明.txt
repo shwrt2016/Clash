@@ -4,6 +4,8 @@ Clash Claude SG — 安装环境与脚本用法
 只说明：在什么机器上能跑、要先装什么、怎么执行。
 全部操作都通过 install-mac-optimized.sh 完成，增强脚本模板已内嵌在里面。
 
+没有编程基础请改看 小白使用说明.txt，那份是一步步的图文式流程。
+
 
 1. 适用环境
 -----------
@@ -38,12 +40,7 @@ A. Clash Verge 至少完整启动过一次
 B. 已经导入至少一份订阅
    目录里要有 profiles.yaml 和 profiles/。
 
-C. 已经创建过「全局扩展脚本」
-   脚本要在 profiles.yaml 里找到 uid: Script。
-   全新安装如果从没点开过全局脚本，这一项会失败。
-   操作：打开 Clash Verge → 配置 / 设置里找到全局扩展脚本（Script）并保存一次。
-
-D. 手头有 SG HTTP 代理账号
+C. 手头有 SG HTTP 代理账号
    仓库里没有真实密码。安装时终端会询问：
      SG_SERVER    服务器域名或 IP（不能有空格）
      SG_PORT      端口，1～65535
@@ -51,7 +48,7 @@ D. 手头有 SG HTTP 代理账号
      SG_PASSWORD  密码（输入时不显示）
      是否跳过 TLS 证书校验（默认 N）
 
-E. 跑脚本时 Clash Verge 必须完全退出
+D. 跑脚本时 Clash Verge 必须完全退出
    包括菜单栏图标。程序还在运行会拒绝写入，避免配置被覆盖。
 
 
@@ -132,7 +129,6 @@ Clash 已运行、订阅已重新加载后：
 错误提示                                         原因
 未找到 Clash Verge 配置目录                      没装、或从未启动过 App
 配置不完整，缺少 profiles.yaml                   启动过但还没导入订阅
-未找到全局脚本项 uid=Script                      从未创建全局扩展脚本
 Clash Verge 正在运行                             没彻底退出
 SG_SERVER / 端口 / 用户名密码相关错误            没填、填空、端口不是数字
 检测到当前订阅存在非空后置脚本                   订阅自带 script；确认后加 --force-profile-script
@@ -145,5 +141,6 @@ SG_SERVER / 端口 / 用户名密码相关错误            没填、填空、�
 -----------------
 install-mac-optimized.sh   安装入口，写入后自动自检，失败自动回滚
 self-check.sh              安装文件自检 + Clash 重载后的配置和出口自检
+小白使用说明.txt           零基础版安装步骤
 test-optimized.mjs         开发用测试，使用本仓库不需要跑
 LICENSE                    木兰协议

@@ -159,11 +159,11 @@ item_field() {
 
 CURRENT_UID="$(awk '/^current:[[:space:]]*/ { print $2; exit }' "$PROFILES_YAML")"
 GLOBAL_SCRIPT_FILE="$(item_field "Script" "file")"
+CREATE_GLOBAL_SCRIPT_ITEM=false
 
 if [[ -z "$GLOBAL_SCRIPT_FILE" ]]; then
-  echo "错误：profiles.yaml 中未找到全局脚本项 uid=Script。" >&2
-  echo "请先在 Clash Verge 中创建一次全局扩展脚本，然后重试。" >&2
-  exit 1
+  GLOBAL_SCRIPT_FILE="Script.js"
+  CREATE_GLOBAL_SCRIPT_ITEM=true
 fi
 
 GLOBAL_SCRIPT_PATH="$PROFILES_DIR/$GLOBAL_SCRIPT_FILE"
@@ -657,9 +657,14 @@ fi
 GLOBAL_SCRIPT_EXISTED=false
 PROFILE_SCRIPT_EXISTED=false
 VERGE_YAML_EXISTED=false
+PROFILES_YAML_EXISTED=false
 if [[ -f "$GLOBAL_SCRIPT_PATH" ]]; then
   GLOBAL_SCRIPT_EXISTED=true
   cp -p "$GLOBAL_SCRIPT_PATH" "$TEMP_DIR/global-script.before"
+fi
+if [[ -f "$PROFILES_YAML" ]]; then
+  PROFILES_YAML_EXISTED=true
+  cp -p "$PROFILES_YAML" "$TEMP_DIR/profiles.before"
 fi
 if [[ -n "$PROFILE_SCRIPT_PATH" ]] &&
   [[ "$PROFILE_SCRIPT_PATH" != "$GLOBAL_SCRIPT_PATH" ]] &&
@@ -703,6 +708,9 @@ rollback_installation() {
   if [[ "$VERGE_YAML_EXISTED" == true ]]; then
     restore_target true "$TEMP_DIR/verge.before" "$VERGE_YAML" || failed=true
   fi
+  if [[ "$PROFILES_YAML_EXISTED" == true ]]; then
+    restore_target true "$TEMP_DIR/profiles.before" "$PROFILES_YAML" || failed=true
+  fi
 
   if [[ "$failed" == true ]]; then
     echo "错误：自动恢复不完整，请从私密备份手工恢复：$BACKUP_DIR" >&2
@@ -710,6 +718,41 @@ rollback_installation() {
   fi
   echo "安装后自检失败，已恢复安装前配置。" >&2
 }
+
+insert_global_script_item() {
+  local temp="$TEMP_DIR/profiles.yaml"
+  awk '
+    BEGIN {
+      inserted = 0
+    }
+    /^items:[[:space:]]*$/ {
+      print
+      print "- uid: Script"
+      print "  type: script"
+      print "  name: default"
+      print "  file: Script.js"
+      inserted = 1
+      next
+    }
+    {
+      print
+    }
+    END {
+      if (!inserted) {
+        print "items:"
+        print "- uid: Script"
+        print "  type: script"
+        print "  name: default"
+        print "  file: Script.js"
+      }
+    }
+  ' "$PROFILES_YAML" > "$temp"
+  install -m 600 "$temp" "$PROFILES_YAML"
+}
+
+if [[ "$CREATE_GLOBAL_SCRIPT_ITEM" == true ]]; then
+  insert_global_script_item
+fi
 
 install -m 600 "$GENERATED_SCRIPT" "$GLOBAL_SCRIPT_PATH"
 if [[ -n "$PROFILE_SCRIPT_PATH" ]] &&

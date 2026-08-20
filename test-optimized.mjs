@@ -9,6 +9,7 @@ import {
   readFileSync,
   readdirSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -244,6 +245,73 @@ test("安装后自检失败会恢复所有修改文件", () => {
   assert.equal(readFileSync(fixture.profileScript, "utf8"), beforeProfile);
   assert.equal(readFileSync(vergePath, "utf8"), beforeVerge);
   assert.equal(result.stdout.includes("安装完成"), false);
+});
+
+test("没有全局扩展脚本时自动创建并写入", () => {
+  const fixture = createFixture();
+  const profilesYaml = `current: remote-profile
+items:
+- uid: remote-profile
+  type: remote
+  name: 测试订阅
+  file: remote-profile.yaml
+`;
+  writeFileSync(join(fixture.appDir, "profiles.yaml"), profilesYaml);
+  const globalScript = join(fixture.profilesDir, "Script.js");
+  if (existsSync(globalScript)) {
+    unlinkSync(globalScript);
+  }
+
+  const result = runInstaller(fixture);
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(
+    readFileSync(join(fixture.appDir, "profiles.yaml"), "utf8"),
+    /^- uid: Script$/m,
+  );
+  assert.match(
+    readFileSync(join(fixture.appDir, "profiles.yaml"), "utf8"),
+    /^  file: Script\.js$/m,
+  );
+  assert.equal(existsSync(globalScript), true);
+  assert.match(readFileSync(globalScript, "utf8"), /Clash Claude SG Optimized/);
+});
+
+test("自动创建的全局脚本在自检失败后会连同 profiles.yaml 一起还原", () => {
+  const fixture = createFixture();
+  const profilesYaml = `current: remote-profile
+items:
+- uid: remote-profile
+  type: remote
+  name: 测试订阅
+  file: remote-profile.yaml
+`;
+  writeFileSync(join(fixture.appDir, "profiles.yaml"), profilesYaml);
+  const globalScript = join(fixture.profilesDir, "Script.js");
+  if (existsSync(globalScript)) {
+    unlinkSync(globalScript);
+  }
+  const isolatedDir = join(fixture.home, "package");
+  mkdirSync(isolatedDir);
+  const isolatedInstaller = join(isolatedDir, "install-mac-optimized.sh");
+  const failingCheck = join(isolatedDir, "self-check.sh");
+  copyFileSync(installerPath, isolatedInstaller);
+  writeFileSync(failingCheck, "#!/usr/bin/env bash\nexit 9\n");
+  chmodSync(isolatedInstaller, 0o755);
+  chmodSync(failingCheck, 0o755);
+
+  const result = spawnSync(
+    "bash",
+    [isolatedInstaller, "--non-interactive", "--skip-running-check"],
+    { encoding: "utf8", env: installerEnv(fixture.home) },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.equal(
+    readFileSync(join(fixture.appDir, "profiles.yaml"), "utf8"),
+    profilesYaml,
+  );
+  assert.equal(existsSync(join(fixture.profilesDir, "Script.js")), false);
 });
 
 test("默认拒绝覆盖非空的订阅后置脚本，且不产生部分修改", () => {
