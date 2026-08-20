@@ -72,10 +72,11 @@ E. 跑脚本时 Clash Verge 必须完全退出
 2) 终端：
 
    cd /path/to/Clash
-   chmod +x install-mac-optimized.sh
+   chmod +x install-mac-optimized.sh self-check.sh
    ./install-mac-optimized.sh
 
-3) 按提示输入 SG 账号。成功时会打印「安装完成」，并写出备份目录。
+3) 按提示输入 SG 账号。写入后会自动检查脚本内容、权限和 DNS 开关。
+   全部通过才会打印「安装完成」；失败会自动恢复安装前配置。
 
 非交互（CI / 已导出环境变量时）：
 
@@ -111,7 +112,13 @@ GUI 的「DNS 覆盖」应保持关闭。DNS 由增强脚本接管。
 -------
 Clash 已运行、订阅已重新加载后：
 
+   ./self-check.sh
+
+兼容命令：
+
    ./install-mac-optimized.sh --verify
+
+两条命令执行的是同一套运行自检。
 
 浏览器也可打开：https://ip.net.coffee/claude/
 看 Claude 出口是否为新加坡。
@@ -129,11 +136,14 @@ Clash 已运行、订阅已重新加载后：
 Clash Verge 正在运行                             没彻底退出
 SG_SERVER / 端口 / 用户名密码相关错误            没填、填空、端口不是数字
 检测到当前订阅存在非空后置脚本                   订阅自带 script；确认后加 --force-profile-script
+缺少可执行的自检脚本 self-check.sh               下载不完整，或未执行 chmod +x self-check.sh
+安装后自检失败，已恢复安装前配置                 写入内容、权限或 DNS 开关检查失败
 此脚本仅适用于 macOS                             在非 Mac 上执行
 
 
 9. 仓库里其它文件
 -----------------
-install-mac-optimized.sh   唯一入口（安装 + 验证），增强脚本模板内嵌其中
+install-mac-optimized.sh   安装入口，写入后自动自检，失败自动回滚
+self-check.sh              安装文件自检 + Clash 重载后的配置和出口自检
 test-optimized.mjs         开发用测试，使用本仓库不需要跑
 LICENSE                    木兰协议

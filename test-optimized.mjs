@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
   chmodSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -18,6 +19,7 @@ import vm from "node:vm";
 
 const packageDir = dirname(fileURLToPath(import.meta.url));
 const installerPath = join(packageDir, "install-mac-optimized.sh");
+const selfCheckPath = join(packageDir, "self-check.sh");
 
 function createFixture() {
   const home = mkdtempSync(join(tmpdir(), "clash-claude-test-"));
@@ -122,7 +124,9 @@ function plain(value) {
 
 test("安装脚本靠环境变量注入账号，并检查 GEO 与启动 DNS", () => {
   assert.equal(existsSync(installerPath), true, "尚未生成优化安装脚本");
+  assert.equal(existsSync(selfCheckPath), true, "尚未生成自检脚本");
   const installer = readFileSync(installerPath, "utf8");
+  const selfCheck = readFileSync(selfCheckPath, "utf8");
 
   assert.match(installer, /SG_SERVER/);
   assert.match(installer, /SG_PASSWORD/);
@@ -130,7 +134,116 @@ test("安装脚本靠环境变量注入账号，并检查 GEO 与启动 DNS", ()
   assert.match(installer, /geo-update-interval/);
   assert.match(installer, /72/);
   assert.match(installer, /default-nameserver/);
-  assert.match(installer, /启动 DNS 已加密/);
+  assert.match(selfCheck, /启动 DNS 已加密/);
+  assert.match(installer, /self-check\.sh/);
+});
+
+test("安装后自检接受一致且权限安全的文件", () => {
+  assert.equal(existsSync(selfCheckPath), true, "尚未生成自检脚本");
+  const fixture = createFixture();
+  const expected = join(fixture.home, "expected.js");
+  writeFileSync(expected, "function main(config) { return config; }\n");
+  writeFileSync(fixture.globalScript, readFileSync(expected));
+  writeFileSync(fixture.profileScript, readFileSync(expected));
+  chmodSync(expected, 0o600);
+  chmodSync(fixture.globalScript, 0o600);
+  chmodSync(fixture.profileScript, 0o600);
+  writeFileSync(join(fixture.appDir, "verge.yaml"), "enable_dns_settings: false\n");
+
+  const result = spawnSync(
+    "bash",
+    [
+      selfCheckPath,
+      "--post-install",
+      "--expected-script",
+      expected,
+      "--global-script",
+      fixture.globalScript,
+      "--profile-script",
+      fixture.profileScript,
+      "--verge-yaml",
+      join(fixture.appDir, "verge.yaml"),
+    ],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /安装文件自检通过/);
+});
+
+test("安装后自检拒绝内容不一致的脚本", () => {
+  assert.equal(existsSync(selfCheckPath), true, "尚未生成自检脚本");
+  const fixture = createFixture();
+  const expected = join(fixture.home, "expected.js");
+  writeFileSync(expected, "expected\n");
+  writeFileSync(fixture.globalScript, "different\n");
+  chmodSync(expected, 0o600);
+  chmodSync(fixture.globalScript, 0o600);
+
+  const result = spawnSync(
+    "bash",
+    [
+      selfCheckPath,
+      "--post-install",
+      "--expected-script",
+      expected,
+      "--global-script",
+      fixture.globalScript,
+    ],
+    { encoding: "utf8" },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /全局脚本内容一致.*❌|❌.*全局脚本内容一致/);
+});
+
+test("缺少自检脚本时安装在修改配置前失败", () => {
+  const fixture = createFixture();
+  const isolatedDir = join(fixture.home, "package");
+  mkdirSync(isolatedDir);
+  const isolatedInstaller = join(isolatedDir, "install-mac-optimized.sh");
+  copyFileSync(installerPath, isolatedInstaller);
+  chmodSync(isolatedInstaller, 0o755);
+  const beforeGlobal = readFileSync(fixture.globalScript, "utf8");
+
+  const result = spawnSync(
+    "bash",
+    [isolatedInstaller, "--non-interactive", "--skip-running-check", "--force-profile-script"],
+    { encoding: "utf8", env: installerEnv(fixture.home) },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /self-check\.sh/);
+  assert.equal(readFileSync(fixture.globalScript, "utf8"), beforeGlobal);
+});
+
+test("安装后自检失败会恢复所有修改文件", () => {
+  const fixture = createFixture();
+  const isolatedDir = join(fixture.home, "package");
+  mkdirSync(isolatedDir);
+  const isolatedInstaller = join(isolatedDir, "install-mac-optimized.sh");
+  const failingCheck = join(isolatedDir, "self-check.sh");
+  copyFileSync(installerPath, isolatedInstaller);
+  writeFileSync(failingCheck, "#!/usr/bin/env bash\nexit 9\n");
+  chmodSync(isolatedInstaller, 0o755);
+  chmodSync(failingCheck, 0o755);
+  const beforeGlobal = readFileSync(fixture.globalScript, "utf8");
+  const beforeProfile = readFileSync(fixture.profileScript, "utf8");
+  const vergePath = join(fixture.appDir, "verge.yaml");
+  const beforeVerge = readFileSync(vergePath, "utf8");
+
+  const result = spawnSync(
+    "bash",
+    [isolatedInstaller, "--non-interactive", "--skip-running-check", "--force-profile-script"],
+    { encoding: "utf8", env: installerEnv(fixture.home) },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /已恢复安装前配置/);
+  assert.equal(readFileSync(fixture.globalScript, "utf8"), beforeGlobal);
+  assert.equal(readFileSync(fixture.profileScript, "utf8"), beforeProfile);
+  assert.equal(readFileSync(vergePath, "utf8"), beforeVerge);
+  assert.equal(result.stdout.includes("安装完成"), false);
 });
 
 test("默认拒绝覆盖非空的订阅后置脚本，且不产生部分修改", () => {
@@ -225,6 +338,44 @@ esac
   assert.match(result.stdout, /中国出口检测域名已置顶直连/);
   assert.match(result.stdout, /国内网站已优先直连/);
   assert.match(result.stdout, /loc=SG/);
+
+  const directResult = spawnSync(
+    "bash",
+    [selfCheckPath, "--skip-running-check"],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HOME: fixture.home,
+        PATH: `${fakeBin}:${process.env.PATH}`,
+      },
+    },
+  );
+  assert.equal(
+    directResult.status,
+    result.status,
+    `${directResult.stdout}\n${directResult.stderr}`,
+  );
+  assert.equal(directResult.stdout, result.stdout);
+
+  writeFileSync(
+    fakeCurl,
+    "#!/usr/bin/env bash\nprintf 'ip=192.0.2.2\\nloc=US\\ncolo=LAX\\n'\n",
+  );
+  const wrongExit = spawnSync(
+    "bash",
+    [selfCheckPath, "--skip-running-check"],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HOME: fixture.home,
+        PATH: `${fakeBin}:${process.env.PATH}`,
+      },
+    },
+  );
+  assert.notEqual(wrongExit.status, 0);
+  assert.match(wrongExit.stdout, /❌ Claude 实际出口为新加坡/);
 });
 
 test("强制模式私密备份后安装到全局及订阅后置脚本", () => {
@@ -512,7 +663,9 @@ test("生成配置通过本机 Mihomo 内核校验", (context) => {
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
-test("安装脚本通过 Bash 语法检查", () => {
+test("安装和自检脚本通过 Bash 语法检查", () => {
   assert.equal(existsSync(installerPath), true, "尚未生成优化安装脚本");
+  assert.equal(existsSync(selfCheckPath), true, "尚未生成自检脚本");
   execFileSync("bash", ["-n", installerPath], { stdio: "pipe" });
+  execFileSync("bash", ["-n", selfCheckPath], { stdio: "pipe" });
 });

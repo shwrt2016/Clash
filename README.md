@@ -23,11 +23,11 @@
 2. 获取本仓库后执行：
 
 ```bash
-chmod +x install-mac-optimized.sh
+chmod +x install-mac-optimized.sh self-check.sh
 ./install-mac-optimized.sh
 ```
 
-3. 按提示输入 `SG_SERVER` / `SG_PORT` / `SG_USERNAME` / `SG_PASSWORD`。
+3. 按提示输入 `SG_SERVER` / `SG_PORT` / `SG_USERNAME` / `SG_PASSWORD`。安装结束会自动检查写入内容和权限；失败时自动恢复安装前配置。
 4. 再打开 Clash Verge：Rule 模式、打开 TUN、对当前订阅重新加载。系统网络建议关闭 IPv6。
 
 非交互：
@@ -43,14 +43,17 @@ SG_PASSWORD=... \
 验证：
 
 ```bash
-./install-mac-optimized.sh --verify
+./self-check.sh
 ```
+
+兼容命令 `./install-mac-optimized.sh --verify` 会调用同一个自检脚本。
 
 ## 仓库里有什么
 
 | 文件 | 作用 |
 | --- | --- |
-| `install-mac-optimized.sh` | 唯一入口（安装 + 验证），增强脚本模板内嵌其中 |
+| `install-mac-optimized.sh` | 安装入口，写入后自动自检，失败自动回滚 |
+| `self-check.sh` | 安装文件自检 + Clash 重载后的配置和出口自检 |
 | `使用说明.txt` | 环境、依赖、步骤和常见失败 |
 | `test-optimized.mjs` | 开发用测试，使用本仓库不需要跑 |
 

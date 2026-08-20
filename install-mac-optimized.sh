@@ -28,6 +28,8 @@ FORCE_PROFILE_SCRIPT=false
 NON_INTERACTIVE=false
 SKIP_RUNNING_CHECK=false
 VERIFY_ONLY=false
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+SELF_CHECK="$ROOT/self-check.sh"
 
 usage() {
   cat <<'EOF'
@@ -82,6 +84,19 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 
+if [[ ! -x "$SELF_CHECK" ]]; then
+  echo "错误：缺少可执行的自检脚本 $SELF_CHECK" >&2
+  echo "请完整下载仓库，并执行 chmod +x self-check.sh。" >&2
+  exit 1
+fi
+
+if [[ "$VERIFY_ONLY" == true ]]; then
+  if [[ "$SKIP_RUNNING_CHECK" == true ]]; then
+    exec "$SELF_CHECK" --skip-running-check
+  fi
+  exec "$SELF_CHECK"
+fi
+
 find_verge_dir() {
   local candidate
   for candidate in \
@@ -106,268 +121,6 @@ fi
 PROFILES_YAML="$VERGE_DIR/profiles.yaml"
 PROFILES_DIR="$VERGE_DIR/profiles"
 VERGE_YAML="$VERGE_DIR/verge.yaml"
-RUNTIME_YAML="$VERGE_DIR/clash-verge.yaml"
-
-run_verification() {
-  local pass_count=0
-  local total_count=0
-  local mixed_port=""
-  local trace=""
-  local location=""
-  local other_trace=""
-
-  verify_pass() {
-    total_count=$((total_count + 1))
-    pass_count=$((pass_count + 1))
-    echo "✅ $1"
-  }
-
-  verify_fail() {
-    total_count=$((total_count + 1))
-    echo "❌ $1"
-  }
-
-  if [[ ! -f "$RUNTIME_YAML" ]]; then
-    echo "错误：未找到运行配置 $RUNTIME_YAML" >&2
-    echo "请先启动 Clash Verge 并重新加载当前订阅。" >&2
-    return 1
-  fi
-
-  echo "Clash Claude SG 配置验证"
-  echo
-
-  if grep -Fq "DOMAIN-SUFFIX,claude.ai,SG-Team" "$RUNTIME_YAML"; then
-    verify_pass "Claude 路由规则已加载"
-  else
-    verify_fail "Claude 路由规则已加载"
-  fi
-
-  if awk '
-    /^rules:/ {
-      inside = 1
-      next
-    }
-    inside && /^-/ {
-      count++
-      if (count == 1 && $0 != "- DOMAIN-SUFFIX,qlogo.cn,DIRECT") {
-        invalid = 1
-      }
-      if (count == 2 && $0 != "- DOMAIN-SUFFIX,qpic.cn,DIRECT") {
-        invalid = 1
-      }
-      if (count == 3 && $0 != "- DOMAIN-SUFFIX,gtimg.cn,DIRECT") {
-        invalid = 1
-      }
-      if (count == 3) {
-        exit
-      }
-    }
-    END {
-      exit count == 3 && !invalid ? 0 : 1
-    }
-  ' "$RUNTIME_YAML"
-  then
-    verify_pass "腾讯图片域名已置顶直连"
-  else
-    verify_fail "腾讯图片域名已置顶直连"
-  fi
-
-  if awk '
-    /^rules:/ {
-      inside = 1
-      next
-    }
-    inside && /^-/ {
-      count++
-      if (count == 4 && $0 != "- DOMAIN-SUFFIX,ip138.com,DIRECT") {
-        invalid = 1
-      }
-      if (count == 5 && $0 != "- DOMAIN-SUFFIX,ip.cn,DIRECT") {
-        invalid = 1
-      }
-      if (count == 5) {
-        exit
-      }
-    }
-    END {
-      exit count == 5 && !invalid ? 0 : 1
-    }
-  ' "$RUNTIME_YAML"
-  then
-    verify_pass "中国出口检测域名已置顶直连"
-  else
-    verify_fail "中国出口检测域名已置顶直连"
-  fi
-
-  if awk '
-    /^rules:/ {
-      inside = 1
-      next
-    }
-    inside && /^-/ {
-      line++
-      if ($0 == "- DOMAIN-SUFFIX,claude.ai,SG-Team") {
-        claude_line = line
-      }
-      if ($0 == "- GEOSITE,CN,DIRECT") {
-        geosite_line = line
-      }
-      if ($0 == "- GEOIP,CN,DIRECT") {
-        geoip_line = line
-      }
-      if (block_line == 0 && $0 ~ /,🛑 全球拦截$/) {
-        block_line = line
-      }
-    }
-    END {
-      valid = claude_line > 0 &&
-        geosite_line > claude_line &&
-        geoip_line == geosite_line + 1 &&
-        (block_line == 0 || geoip_line < block_line)
-      exit valid ? 0 : 1
-    }
-  ' "$RUNTIME_YAML"
-  then
-    verify_pass "国内网站已优先直连"
-  else
-    verify_fail "国内网站已优先直连"
-  fi
-
-  if grep -Fq "+.claude.ai:" "$RUNTIME_YAML" &&
-    grep -Fq "https://1.1.1.1/dns-query#SG-Team" "$RUNTIME_YAML"
-  then
-    verify_pass "Claude DNS 使用 Cloudflare DoH 并经过 SG-Team"
-  else
-    verify_fail "Claude DNS 使用 Cloudflare DoH 并经过 SG-Team"
-  fi
-
-  if grep -Fq "geosite:geolocation-!cn:" "$RUNTIME_YAML" &&
-    grep -Fq "https://1.1.1.1/dns-query#RULES" "$RUNTIME_YAML"
-  then
-    verify_pass "国外域名使用 Cloudflare DoH 并按规则转发"
-  else
-    verify_fail "国外域名使用 Cloudflare DoH 并按规则转发"
-  fi
-
-  if grep -Fq "geosite:cn:" "$RUNTIME_YAML" &&
-    grep -Fq "https://223.5.5.5/dns-query#DIRECT" "$RUNTIME_YAML" &&
-    grep -Fq "https://1.12.12.12/dns-query#DIRECT" "$RUNTIME_YAML"
-  then
-    verify_pass "国内域名使用国内 DoH 并直连"
-  else
-    verify_fail "国内域名使用国内 DoH 并直连"
-  fi
-
-  if grep -Eq '^geo-auto-update:[[:space:]]*true[[:space:]]*$' "$RUNTIME_YAML" &&
-    grep -Eq '^geo-update-interval:[[:space:]]*72[[:space:]]*$' "$RUNTIME_YAML"
-  then
-    verify_pass "GEO 数据每 72 小时自动更新"
-  else
-    verify_fail "GEO 数据每 72 小时自动更新"
-  fi
-
-  if awk '
-    BEGIN {
-      encrypted = 1
-    }
-    /^  default-nameserver:/ {
-      inside = 1
-      next
-    }
-    inside && /^  [[:alnum:]_-]+:/ {
-      inside = 0
-    }
-    inside && /^[[:space:]]*-[[:space:]]*/ {
-      found = 1
-      value = $0
-      sub(/^[[:space:]]*-[[:space:]]*/, "", value)
-      gsub(/"/, "", value)
-      gsub(/\047/, "", value)
-      if (value !~ /^(https|tls):\/\//) {
-        encrypted = 0
-      }
-    }
-    END {
-      exit found && encrypted ? 0 : 1
-    }
-  ' "$RUNTIME_YAML"
-  then
-    verify_pass "启动 DNS 已加密"
-  else
-    verify_fail "启动 DNS 已加密"
-  fi
-
-  if awk '
-    /^hosts:/ {
-      in_hosts = 1
-      next
-    }
-    in_hosts && /^[^[:space:]]/ {
-      in_hosts = 0
-    }
-    in_hosts && tolower($0) ~ /(claude|anthropic|clau\.de)/ {
-      found = 1
-    }
-    END {
-      exit found ? 0 : 1
-    }
-  ' "$RUNTIME_YAML"
-  then
-    verify_fail "未写死 Claude hosts"
-  else
-    verify_pass "未写死 Claude hosts"
-  fi
-
-  if grep -Eq "category-ntp.*,SG-Team|category-ntp,SG-Team" "$RUNTIME_YAML"; then
-    verify_fail "NTP 未错误指向 HTTP 代理"
-  else
-    verify_pass "NTP 未错误指向 HTTP 代理"
-  fi
-
-  mixed_port="$(
-    awk '/^mixed-port:[[:space:]]*/ {
-      print $2
-      exit
-    }' "$RUNTIME_YAML"
-  )"
-  mixed_port="${mixed_port:-7897}"
-
-  trace="$(
-    curl -sS --max-time 10 \
-      -x "http://127.0.0.1:${mixed_port}" \
-      "https://claude.ai/cdn-cgi/trace" 2>/dev/null || true
-  )"
-  location="$(printf '%s\n' "$trace" | awk -F= '/^loc=/{ print $2; exit }')"
-  printf '%s\n' "$trace" | awk -F= '/^(ip|loc|colo)=/{ print }'
-  if [[ "$location" == "SG" ]]; then
-    verify_pass "Claude 实际出口为新加坡"
-  else
-    verify_fail "Claude 实际出口为新加坡"
-  fi
-
-  other_trace="$(
-    curl -sS --max-time 10 \
-      -x "http://127.0.0.1:${mixed_port}" \
-      "https://cloudflare.com/cdn-cgi/trace" 2>/dev/null || true
-  )"
-  echo "非 Claude 出口（仅供对照）："
-  printf '%s\n' "$other_trace" | awk -F= '/^(ip|loc|colo)=/{ print }'
-
-  echo
-  echo "验证结果：${pass_count}/${total_count}"
-  if [[ "$pass_count" -eq "$total_count" ]]; then
-    echo "验证通过。"
-    return 0
-  fi
-  echo "验证未通过，请检查上述失败项。"
-  return 1
-}
-
-if [[ "$VERIFY_ONLY" == true ]]; then
-  run_verification
-  exit $?
-fi
-
 if [[ ! -f "$PROFILES_YAML" || ! -d "$PROFILES_DIR" ]]; then
   echo "错误：Clash Verge 配置不完整，缺少 profiles.yaml 或 profiles 目录。" >&2
   exit 1
@@ -901,6 +654,63 @@ then
   backup_file "$PROFILE_SCRIPT_PATH" "$PROFILE_SCRIPT_FILE"
 fi
 
+GLOBAL_SCRIPT_EXISTED=false
+PROFILE_SCRIPT_EXISTED=false
+VERGE_YAML_EXISTED=false
+if [[ -f "$GLOBAL_SCRIPT_PATH" ]]; then
+  GLOBAL_SCRIPT_EXISTED=true
+  cp -p "$GLOBAL_SCRIPT_PATH" "$TEMP_DIR/global-script.before"
+fi
+if [[ -n "$PROFILE_SCRIPT_PATH" ]] &&
+  [[ "$PROFILE_SCRIPT_PATH" != "$GLOBAL_SCRIPT_PATH" ]] &&
+  [[ -f "$PROFILE_SCRIPT_PATH" ]]
+then
+  PROFILE_SCRIPT_EXISTED=true
+  cp -p "$PROFILE_SCRIPT_PATH" "$TEMP_DIR/profile-script.before"
+fi
+if [[ -f "$VERGE_YAML" ]]; then
+  VERGE_YAML_EXISTED=true
+  cp -p "$VERGE_YAML" "$TEMP_DIR/verge.before"
+fi
+
+restore_target() {
+  local existed="$1"
+  local snapshot="$2"
+  local target="$3"
+
+  if [[ "$existed" == true ]]; then
+    cp -p "$snapshot" "$target"
+  else
+    rm -f "$target"
+  fi
+}
+
+rollback_installation() {
+  local failed=false
+
+  restore_target \
+    "$GLOBAL_SCRIPT_EXISTED" \
+    "$TEMP_DIR/global-script.before" \
+    "$GLOBAL_SCRIPT_PATH" || failed=true
+  if [[ -n "$PROFILE_SCRIPT_PATH" ]] &&
+    [[ "$PROFILE_SCRIPT_PATH" != "$GLOBAL_SCRIPT_PATH" ]]
+  then
+    restore_target \
+      "$PROFILE_SCRIPT_EXISTED" \
+      "$TEMP_DIR/profile-script.before" \
+      "$PROFILE_SCRIPT_PATH" || failed=true
+  fi
+  if [[ "$VERGE_YAML_EXISTED" == true ]]; then
+    restore_target true "$TEMP_DIR/verge.before" "$VERGE_YAML" || failed=true
+  fi
+
+  if [[ "$failed" == true ]]; then
+    echo "错误：自动恢复不完整，请从私密备份手工恢复：$BACKUP_DIR" >&2
+    return 1
+  fi
+  echo "安装后自检失败，已恢复安装前配置。" >&2
+}
+
 install -m 600 "$GENERATED_SCRIPT" "$GLOBAL_SCRIPT_PATH"
 if [[ -n "$PROFILE_SCRIPT_PATH" ]] &&
   [[ "$PROFILE_SCRIPT_PATH" != "$GLOBAL_SCRIPT_PATH" ]]
@@ -932,6 +742,25 @@ if [[ -f "$VERGE_YAML" ]]; then
   install -m 600 "$VERGE_TEMP" "$VERGE_YAML"
 fi
 
+SELF_CHECK_ARGS=(
+  --post-install
+  --expected-script "$GENERATED_SCRIPT"
+  --global-script "$GLOBAL_SCRIPT_PATH"
+)
+if [[ -n "$PROFILE_SCRIPT_PATH" ]] &&
+  [[ "$PROFILE_SCRIPT_PATH" != "$GLOBAL_SCRIPT_PATH" ]]
+then
+  SELF_CHECK_ARGS+=(--profile-script "$PROFILE_SCRIPT_PATH")
+fi
+if [[ -f "$VERGE_YAML" ]]; then
+  SELF_CHECK_ARGS+=(--verge-yaml "$VERGE_YAML")
+fi
+
+if ! "$SELF_CHECK" "${SELF_CHECK_ARGS[@]}"; then
+  rollback_installation || true
+  exit 4
+fi
+
 echo "安装完成：Clash Claude SG Optimized v$SCRIPT_VERSION"
 echo "全局脚本：$GLOBAL_SCRIPT_PATH"
 if [[ -n "$PROFILE_SCRIPT_PATH" ]] &&
@@ -945,4 +774,4 @@ echo "下一步："
 echo "1. 启动 Clash Verge，保持 Rule 模式并开启 TUN。"
 echo "2. DNS 设置由增强脚本接管，GUI 的 DNS 覆盖应保持关闭。"
 echo "3. 在系统网络设置中关闭 IPv6，避免 TUN 外 IPv6 泄露。"
-echo "4. 打开 https://ip.net.coffee/claude/ 检查 Claude 出口为新加坡。"
+echo "4. 重新加载订阅后运行 ./self-check.sh 检查实际配置和出口。"
